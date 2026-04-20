@@ -7,10 +7,10 @@ from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import DataFeed
 from datetime import datetime, timedelta
 
-# --- Page Config ---
-st.set_page_config(page_title="Vault v77.6 Institutional", layout="wide")
+# --- Page Setup ---
+st.set_page_config(page_title="Vault v77.7 Institutional", layout="wide")
 
-# CSS for 4x2 Grid
+# CSS for the 4x2 Button Grid
 st.markdown("""
     <style>
     .stButton>button {
@@ -22,18 +22,19 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- Universe ---
+# --- Universe Builder ---
 @st.cache_data(ttl=86400)
-def get_institutional_universe():
+def get_full_institutional_universe():
     stock_data = PyTickerSymbols()
     sp = [s['symbol'] for s in stock_data.get_sp_500_nyc_yahoo_tickers() if 'symbol' in s]
     nas = [s['symbol'] for s in stock_data.get_nasdaq_100_nyc_yahoo_tickers() if 'symbol' in s]
     rus_raw = stock_data.get_stocks_by_index('Russell 2000')
     rus = [s['symbol'] if isinstance(s, dict) else s for s in rus_raw][:500]
-    return [str(t).replace('.', '-') for t in sorted(list(set(sp + nas + rus))) if t]
+    full_list = list(set(sp + nas + rus))
+    return [str(t).replace('.', '-') for t in sorted(full_list) if t]
 
-st.title("🛡️ Institutional Vault v77.6")
-st.caption("ADAPTIVE DATA FEED ENABLED | FULL INDEX SCAN")
+st.title("🛡️ Institutional Vault v77.7")
+st.caption("ULTIMATE PAID TIER | S&P 500 | NASDAQ 100 | RUSSELL TOP 500")
 st.divider()
 
 # --- Auth ---
@@ -48,9 +49,7 @@ except Exception as e:
 # --- 4x2 STRATEGY GRID ---
 strategies = ["Momentum Buy", "Long Term Momentum", "Trapped Shorts", "Trapped Longs", 
               "Retest Long", "H2 Pullback", "Bull Coil", "Bear Coil"]
-
-selected_strat = None
-cols = st.columns(4)
+selected_strat, cols = None, st.columns(4)
 for i, strat in enumerate(strategies):
     with cols[i % 4]:
         if st.button(strat): selected_strat = strat
@@ -59,19 +58,26 @@ for i, strat in enumerate(strategies):
 if selected_strat:
     st.divider()
     try:
-        universe = get_institutional_universe()
+        universe = get_full_institutional_universe()
         findings = []
         
-        # --- FEED AUTO-DETECTION ---
-        # We try SIP first (for your Paid Account). If it returns nothing, we fallback to IEX.
-        test_bar = client.get_stock_bars(StockBarsRequest(symbol_or_symbols=["AAPL"], timeframe=TimeFrame.Day, start=datetime.now()-timedelta(days=5), feed=DataFeed.SIP)).df
-        active_feed = DataFeed.SIP if not test_bar.empty else DataFeed.IEX
-        
+        # 1. FEED HUNTER: Determine which feed actually works for your keys
         status_box = st.empty()
-        status_box.info(f"📡 FEED: {active_feed} | SCANNING {len(universe)} SYMBOLS...")
+        status_box.info("🔍 Determining Data Feed (SIP vs IEX)...")
         
-        # Use 350 days to ensure we cover holidays/weekends for the 252 SMA
-        start_dt = datetime.now() - timedelta(days=350)
+        feed_to_use = DataFeed.IEX # Default fallback
+        try:
+            # Test SIP
+            test = client.get_stock_bars(StockBarsRequest(symbol_or_symbols=["AAPL"], timeframe=TimeFrame.Day, start=datetime.now()-timedelta(days=7), feed=DataFeed.SIP)).df
+            if not test.empty:
+                feed_to_use = DataFeed.SIP
+        except:
+            pass
+        
+        status_box.info(f"📡 FEED DETECTED: {feed_to_use} | SCANNING {len(universe)} SYMBOLS...")
+        
+        # Pull 365 days to ensure 252 trading bars
+        start_dt = datetime.now() - timedelta(days=365)
         
         batch_size = 100
         progress_bar = st.progress(0)
@@ -81,18 +87,22 @@ if selected_strat:
             progress_bar.progress(i / len(universe))
             
             try:
-                # Optimized Data Request
-                bars = client.get_stock_bars(StockBarsRequest(
+                # API Call
+                bars_response = client.get_stock_bars(StockBarsRequest(
                     symbol_or_symbols=batch, timeframe=TimeFrame.Day, 
-                    start=start_dt, feed=active_feed
-                )).df
+                    start=start_dt, feed=feed_to_use
+                ))
                 
-                if bars.empty: continue
-
-                # Process returned symbols
-                for symbol in bars.index.get_level_values('symbol').unique():
-                    df = bars.xs(symbol).copy()
-                    if len(df) < 200: continue # Slightly relaxed to ensure hits
+                # Check if we have data
+                if not hasattr(bars_response, 'df') or bars_response.df.empty:
+                    continue
+                
+                raw_data = bars_response.df
+                unique_symbols = raw_data.index.get_level_values('symbol').unique()
+                
+                for symbol in unique_symbols:
+                    df = raw_data.xs(symbol).copy()
+                    if len(df) < 200: continue # Relaxed length check
                     
                     # Indicators
                     df['8sma'] = df['close'].rolling(8).mean()
@@ -106,14 +116,15 @@ if selected_strat:
                     
                     curr, prev_5 = df.iloc[-1], df.iloc[-5]
                     
-                    # Strategy Logic
+                    # Logic Blocks
                     if selected_strat == "Momentum Buy" and curr['close'] > curr['hi20']:
                         dist = abs(curr['close'] - curr['8sma']) / curr['8sma']
                         if dist <= 0.04: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), '8MA_Dist': f'{dist:.2%}'})
                     
                     elif selected_strat == "Long Term Momentum":
                         slope = (curr['50sma'] - prev_5['50sma']) / prev_5['50sma']
-                        if curr['close'] > curr['252sma'] and slope > 0: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), 'Slope': f'{slope:.2%}'})
+                        if curr['close'] > curr['252sma'] and slope > 0:
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), 'Slope': f'{slope:.2%}'})
 
                     elif selected_strat == "Trapped Shorts" and curr['low'] < curr['lo20'] and curr['close'] > curr['lo20']:
                         findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
@@ -123,30 +134,35 @@ if selected_strat:
 
                     elif selected_strat == "Retest Long":
                         at_high = (df.iloc[-10:]['high'].max() >= curr['hi252'])
-                        if at_high and curr['low'] <= curr['20sma'] and curr['close'] > curr['20sma']: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
+                        if at_high and curr['low'] <= curr['20sma'] and curr['close'] > curr['20sma']:
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "H2 Pullback":
-                        if curr['close'] > curr['200sma'] and curr['close'] < curr['20sma'] and curr['low'] > curr['50sma']: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
+                        if curr['close'] > curr['200sma'] and curr['close'] < curr['20sma'] and curr['low'] > curr['50sma']:
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "Bull Coil":
                         smas = [curr['8sma'], curr['20sma'], curr['200sma']]
                         tightness = (max(smas) - min(smas)) / min(smas)
-                        if (curr['close'] > curr['8sma'] > curr['20sma'] > curr['200sma']) and tightness <= 0.05: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), 'Tightness': f'{tightness:.2%}'})
+                        if (curr['close'] > curr['8sma'] > curr['20sma'] > curr['200sma']) and tightness <= 0.05:
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), 'Tightness': f'{tightness:.2%}'})
 
                     elif selected_strat == "Bear Coil":
                         smas = [curr['8sma'], curr['20sma'], curr['200sma']]
                         tightness = (max(smas) - min(smas)) / min(smas)
-                        if (curr['close'] < curr['8sma'] < curr['20sma'] < curr['200sma']) and tightness <= 0.05: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), 'Tightness': f'{tightness:.2%}'})
-            except: continue
+                        if (curr['close'] < curr['8sma'] < curr['20sma'] < curr['200sma']) and tightness <= 0.05:
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2), 'Tightness': f'{tightness:.2%}'})
+            except:
+                continue
 
         status_box.empty()
         progress_bar.empty()
         
         if findings:
-            st.success(f"SUCCESS: {len(findings)} MATCHES FOUND")
+            st.success(f"FOUND {len(findings)} MATCHES")
             st.dataframe(pd.DataFrame(findings), use_container_width=True)
         else:
-            st.warning(f"No results found for {selected_strat}. (Feed: {active_feed})")
+            st.warning(f"No results found for {selected_strat}. (Feed Used: {feed_to_use})")
 
     except Exception as e:
-        st.error(f"Critical Failure: {e}")
+        st.error(f"Error: {e}")
