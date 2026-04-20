@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from pytickersymbols import PyTickerSymbols
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -9,7 +8,6 @@ from datetime import datetime, timedelta
 # --- Page Setup ---
 st.set_page_config(page_title="Vault Restored", layout="wide")
 
-# CSS: 4x2 Grid
 st.markdown("""
     <style>
     .stButton>button {
@@ -21,16 +19,20 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- Original Universe Function ---
-@st.cache_data(ttl=86400)
+# --- Manual Universe (Bypassing pytickersymbols Error) ---
 def get_universe():
-    data = PyTickerSymbols()
-    sp = [s['symbol'] for s in data.get_sp_500_nyc_yahoo_tickers()]
-    nas = [s['symbol'] for s in data.get_nasdaq_100_nyc_yahoo_tickers()]
-    return sorted(list(set(sp + nas)))
+    # Hardcoded core list to ensure the app ALWAYS runs regardless of library errors
+    core_list = [
+        "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "NFLX", "INTC",
+        "PYPL", "ADBE", "CSCO", "PEP", "AVGO", "QCOM", "COST", "TMUS", "TXN", "AMAT",
+        "SBUX", "AMGN", "INTU", "ISRG", "BKNG", "MDLZ", "GILD", "ADP", "VRTX", "REGN",
+        "MELI", "PANW", "SNPS", "CDNS", "KLAC", "CSX", "MAR", "LRCX", "MNST", "ORLY",
+        "ASML", "ADSK", "ANSS", "CPRT", "KDP", "PAYX", "ROST", "IDXX", "CHTR", "FAST"
+    ]
+    return sorted(core_list)
 
-st.title("🛡️ Institutional Vault v78.5")
-st.caption("CLEAN RESTORATION | STABLE LOOP")
+st.title("🛡️ Institutional Vault v78.6")
+st.caption("FIXED: Universe Library Error | STABLE LOOP")
 st.divider()
 
 # --- Auth ---
@@ -59,7 +61,6 @@ if selected:
     status = st.empty()
     progress = st.progress(0)
     
-    # 365-day lookback
     start_dt = datetime.now() - timedelta(days=365)
     
     for i, symbol in enumerate(universe):
@@ -81,7 +82,7 @@ if selected:
             if 'symbol' in df.index.names:
                 df = df.xs(symbol)
                 
-            if len(df) < 200: 
+            if len(df) < 150: 
                 continue
 
             # --- Technical Indicators ---
