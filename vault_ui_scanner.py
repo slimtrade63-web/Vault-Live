@@ -7,10 +7,10 @@ from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import DataFeed
 from datetime import datetime, timedelta
 
-# --- Page Config ---
-st.set_page_config(page_title="Vault v77.8", layout="wide")
+# --- Page Configuration ---
+st.set_page_config(page_title="Vault v78.0 Institutional", layout="wide")
 
-# CSS: 4x2 Grid
+# Custom CSS for the 4x2 Grid
 st.markdown("""
     <style>
     .stButton>button {
@@ -22,28 +22,35 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- Universe ---
+# --- Hardened Universe Builder ---
 @st.cache_data(ttl=86400)
 def get_institutional_universe():
     stock_data = PyTickerSymbols()
-    sp = [s['symbol'] for s in stock_data.get_sp_500_nyc_yahoo_tickers()]
-    nas = [s['symbol'] for s in stock_data.get_nasdaq_100_nyc_yahoo_tickers()]
-    rus = [s['symbol'] if isinstance(s, dict) else s for s in stock_data.get_stocks_by_index('Russell 2000')][:500]
-    full_list = list(set(sp + nas + rus))
-    return [str(t).replace('.', '-') for t in sorted(full_list) if t]
+    # Safely extract symbols without assuming dictionary structure
+    sp_raw = stock_data.get_sp_500_nyc_yahoo_tickers()
+    sp = [s.get('symbol') for s in sp_raw if isinstance(s, dict) and s.get('symbol')]
+    
+    nas_raw = stock_data.get_nasdaq_100_nyc_yahoo_tickers()
+    nas = [s.get('symbol') for s in nas_raw if isinstance(s, dict) and s.get('symbol')]
+    
+    # Combined and cleaned
+    full_list = list(set(sp + nas))
+    return [str(t).replace('.', '-') for t in sorted(full_list)]
 
-st.title("🛡️ Institutional Vault v77.8")
-st.caption("PAID TIER SIP ENABLED | AGGRESSIVE DATA RECOVERY")
+st.title("🛡️ Institutional Vault v78.0")
+st.caption("PAID TIER | SIP FEED | STABILITY FIXED")
 st.divider()
 
 # --- Auth ---
 try:
-    client = StockHistoricalDataClient(st.secrets["ALPACA_API_KEY"], st.secrets["ALPACA_API_SECRET"])
-except:
-    st.error("API Keys Missing.")
+    api_key = st.secrets["ALPACA_API_KEY"]
+    secret_key = st.secrets["ALPACA_API_SECRET"]
+    client = StockHistoricalDataClient(api_key, secret_key)
+except Exception as e:
+    st.error(f"Credentials Error: {e}")
     st.stop()
 
-# --- 4x2 Grid ---
+# --- 4x2 Strategy Grid ---
 strategies = ["Momentum Buy", "Long Term Momentum", "Trapped Shorts", "Trapped Longs", 
               "Retest Long", "H2 Pullback", "Bull Coil", "Bear Coil"]
 selected_strat, cols = None, st.columns(4)
@@ -58,13 +65,13 @@ if selected_strat:
         universe = get_institutional_universe()
         findings = []
         status = st.empty()
-        status.info(f"📡 Scanning {len(universe)} symbols using SIP feed...")
+        status.info(f"📡 Scanning {len(universe)} symbols via SIP feed...")
         
-        # 300 days of data for reliable SMAs
-        start_date = datetime.now() - timedelta(days=380)
+        # Pull 400 days to ensure 252 trading bars are present
+        start_dt = datetime.now() - timedelta(days=400)
         
-        # Batching for stability
-        batch_size = 50 
+        # Batching to prevent timeout
+        batch_size = 50
         progress = st.progress(0)
         
         for i in range(0, len(universe), batch_size):
@@ -72,77 +79,85 @@ if selected_strat:
             progress.progress(i / len(universe))
             
             try:
-                # REQUEST
-                req = StockBarsRequest(symbol_or_symbols=batch, timeframe=TimeFrame.Day, start=start_date, feed=DataFeed.SIP)
-                raw_df = client.get_stock_bars(req).df
+                # API CALL
+                request = StockBarsRequest(
+                    symbol_or_symbols=batch, 
+                    timeframe=TimeFrame.Day, 
+                    start=start_dt, 
+                    feed=DataFeed.SIP # PAID FEED
+                )
+                response = client.get_stock_bars(request)
                 
-                if raw_df.empty: continue
+                # CRITICAL FIX: Check if response has data before calling .df
+                if not hasattr(response, 'df') or response.df is None or response.df.empty:
+                    continue
                 
-                # THE FIX: Reset index so 'symbol' becomes a normal column
-                df_flat = raw_df.reset_index()
+                # FLATTEN THE DATA: This prevents the "string index" error
+                df_all = response.df.reset_index()
                 
                 for symbol in batch:
-                    # Filter flat DF for this specific symbol
-                    sdf = df_flat[df_flat['symbol'] == symbol].copy()
+                    # Isolate symbol data
+                    df = df_all[df_all['symbol'] == symbol].copy()
                     
-                    if len(sdf) < 200: continue
+                    if len(df) < 250: continue
                     
-                    # Technicals
-                    sdf['8sma'] = sdf['close'].rolling(8).mean()
-                    sdf['20sma'] = sdf['close'].rolling(20).mean()
-                    sdf['50sma'] = sdf['close'].rolling(50).mean()
-                    sdf['200sma'] = sdf['close'].rolling(200).mean()
-                    sdf['252sma'] = sdf['close'].rolling(252).mean()
-                    sdf['hi20'] = sdf['high'].shift(1).rolling(20).max()
-                    sdf['lo20'] = sdf['low'].shift(1).rolling(20).min()
-                    sdf['hi252'] = sdf['high'].shift(1).rolling(252).max()
+                    # Indicators
+                    df['8sma'] = df['close'].rolling(8).mean()
+                    df['20sma'] = df['close'].rolling(20).mean()
+                    df['50sma'] = df['close'].rolling(50).mean()
+                    df['200sma'] = df['close'].rolling(200).mean()
+                    df['252sma'] = df['close'].rolling(252).mean()
+                    df['hi20'] = df['high'].shift(1).rolling(20).max()
+                    df['lo20'] = df['low'].shift(1).rolling(20).min()
+                    df['hi252'] = df['high'].shift(1).rolling(252).max()
                     
-                    curr, prev_5 = sdf.iloc[-1], sdf.iloc[-5]
+                    curr, prev_5 = df.iloc[-1], df.iloc[-5]
                     
-                    # Logic
+                    # Logic (Same as your verified strategies)
                     if selected_strat == "Momentum Buy" and curr['close'] > curr['hi20']:
                         dist = abs(curr['close'] - curr['8sma']) / curr['8sma']
-                        if dist <= 0.04: findings.append({'Symbol': symbol, 'Price': curr['close'], '8MA_Dist': f'{dist:.2%}'})
+                        if dist <= 0.04: findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
                     
                     elif selected_strat == "Long Term Momentum":
                         slope = (curr['50sma'] - prev_5['50sma']) / prev_5['50sma']
                         if curr['close'] > curr['252sma'] and slope > 0:
-                            findings.append({'Symbol': symbol, 'Price': curr['close'], 'Slope': f'{slope:.2%}'})
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "Trapped Shorts" and curr['low'] < curr['lo20'] and curr['close'] > curr['lo20']:
-                        findings.append({'Symbol': symbol, 'Price': curr['close']})
+                        findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "Trapped Longs" and curr['high'] > curr['hi20'] and curr['close'] < curr['hi20']:
-                        findings.append({'Symbol': symbol, 'Price': curr['close']})
+                        findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "Retest Long":
-                        recent_high = (sdf.iloc[-10:]['high'].max() >= curr['hi252'])
-                        if recent_high and curr['low'] <= curr['20sma'] and curr['close'] > curr['20sma']:
-                            findings.append({'Symbol': symbol, 'Price': curr['close']})
+                        at_high = (df.iloc[-10:]['high'].max() >= curr['hi252'])
+                        if at_high and curr['low'] <= curr['20sma'] and curr['close'] > curr['20sma']:
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "H2 Pullback":
                         if curr['close'] > curr['200sma'] and curr['close'] < curr['20sma'] and curr['low'] > curr['50sma']:
-                            findings.append({'Symbol': symbol, 'Price': curr['close']})
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "Bull Coil":
                         smas = [curr['8sma'], curr['20sma'], curr['200sma']]
                         tightness = (max(smas) - min(smas)) / min(smas)
                         if (curr['close'] > curr['8sma'] > curr['20sma'] > curr['200sma']) and tightness <= 0.05:
-                            findings.append({'Symbol': symbol, 'Price': curr['close'], 'Tight': f'{tightness:.2%}'})
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
 
                     elif selected_strat == "Bear Coil":
                         smas = [curr['8sma'], curr['20sma'], curr['200sma']]
                         tightness = (max(smas) - min(smas)) / min(smas)
                         if (curr['close'] < curr['8sma'] < curr['20sma'] < curr['200sma']) and tightness <= 0.05:
-                            findings.append({'Symbol': symbol, 'Price': curr['close'], 'Tight': f'{tightness:.2%}'})
-            except: continue
+                            findings.append({'Symbol': symbol, 'Price': round(curr['close'], 2)})
+            except:
+                continue
 
         status.empty()
         if findings:
-            st.success(f"FOUND {len(findings)} TARGETS")
+            st.success(f"SUCCESS: {len(findings)} MATCHES")
             st.dataframe(pd.DataFrame(findings), use_container_width=True)
         else:
-            st.warning("No results found. Verify connection/market conditions.")
+            st.warning("No matches found. This is normal if the market setup isn't active.")
 
     except Exception as e:
-        st.error(f"Critical: {e}")
+        st.error(f"CRITICAL ERROR: {e}")
