@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from pytickersymbols import PyTickerSymbols
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -8,6 +9,7 @@ from datetime import datetime, timedelta
 # --- Page Setup ---
 st.set_page_config(page_title="Vault Restored", layout="wide")
 
+# CSS: 4x2 Grid
 st.markdown("""
     <style>
     .stButton>button {
@@ -19,40 +21,34 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- Manual Universe (Bypassing pytickersymbols Error) ---
+# --- RESTORED: Your Original Universe Function ---
+@st.cache_data(ttl=86400)
 def get_universe():
-    # Hardcoded core list to ensure the app ALWAYS runs regardless of library errors
-    core_list = [
-        "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "NFLX", "INTC",
-        "PYPL", "ADBE", "CSCO", "PEP", "AVGO", "QCOM", "COST", "TMUS", "TXN", "AMAT",
-        "SBUX", "AMGN", "INTU", "ISRG", "BKNG", "MDLZ", "GILD", "ADP", "VRTX", "REGN",
-        "MELI", "PANW", "SNPS", "CDNS", "KLAC", "CSX", "MAR", "LRCX", "MNST", "ORLY",
-        "ASML", "ADSK", "ANSS", "CPRT", "KDP", "PAYX", "ROST", "IDXX", "CHTR", "FAST"
-    ]
-    return sorted(core_list)
+    data = PyTickerSymbols()
+    sp = [s['symbol'] for s in data.get_sp_500_nyc_yahoo_tickers()]
+    nas = [s['symbol'] for s in data.get_nasdaq_100_nyc_yahoo_tickers()]
+    return sorted(list(set(sp + nas)))
 
-st.title("🛡️ Institutional Vault v78.6")
-st.caption("FIXED: Universe Library Error | STABLE LOOP")
+st.title("🛡️ Institutional Vault v78.7")
+st.caption("STABLE RESTORATION")
 st.divider()
 
 # --- Auth ---
 try:
     client = StockHistoricalDataClient(st.secrets["ALPACA_API_KEY"], st.secrets["ALPACA_API_SECRET"])
 except:
-    st.error("API Keys Missing in st.secrets.")
+    st.error("API Keys Missing.")
     st.stop()
 
 # --- 4x2 Grid ---
 strategies = ["Momentum Buy", "Long Term Momentum", "Trapped Shorts", "Trapped Longs", 
               "Retest Long", "H2 Pullback", "Bull Coil", "Bear Coil"]
-
 selected, cols = None, st.columns(4)
 for i, s in enumerate(strategies):
     with cols[i % 4]:
-        if st.button(s): 
-            selected = s
+        if st.button(s): selected = s
 
-# --- Scanning Engine ---
+# --- Scanning Engine (Restored to Original Working Logic) ---
 if selected:
     st.divider()
     universe = get_universe()
@@ -68,22 +64,20 @@ if selected:
         status.info(f"🔍 Analyzing {symbol}...")
         
         try:
+            # SIMPLE SINGLE-REQUEST LOGIC
             req = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 timeframe=TimeFrame.Day,
                 start=start_dt
             )
-            
             df = client.get_stock_bars(req).df
             
-            if df is None or df.empty: 
-                continue
+            if df is None or df.empty: continue
             
             if 'symbol' in df.index.names:
                 df = df.xs(symbol)
                 
-            if len(df) < 150: 
-                continue
+            if len(df) < 200: continue
 
             # --- Technical Indicators ---
             df['8sma'] = df['close'].rolling(8).mean()
@@ -102,29 +96,21 @@ if selected:
             match = False
             if selected == "Momentum Buy" and c['close'] > c['hi20']:
                 if (abs(c['close'] - c['8sma']) / c['8sma']) <= 0.04: match = True
-            
-            elif selected == "Long Term Momentum":
-                if c['close'] > c['252sma'] and c['50sma'] > p5['50sma']: match = True
-
+            elif selected == "Long Term Momentum" and c['close'] > c['252sma'] and (c['50sma'] > p5['50sma']):
+                match = True
             elif selected == "Trapped Shorts" and c['low'] < c['lo20'] and c['close'] > c['lo20']:
                 match = True
-
             elif selected == "Trapped Longs" and c['high'] > c['hi20'] and c['close'] < c['hi20']:
                 match = True
-
             elif selected == "Retest Long":
                 if (df.iloc[-10:]['high'].max() >= c['hi252']) and c['low'] <= c['20sma'] and c['close'] > c['20sma']:
                     match = True
-
-            elif selected == "H2 Pullback":
-                if c['close'] > c['200sma'] and c['close'] < c['20sma'] and c['low'] > c['50sma']:
-                    match = True
-
+            elif selected == "H2 Pullback" and c['close'] > c['200sma'] and c['close'] < c['20sma'] and c['low'] > c['50sma']:
+                match = True
             elif selected == "Bull Coil":
                 smas = [c['8sma'], c['20sma'], c['200sma']]
                 if (c['close'] > c['8sma'] > c['20sma'] > c['200sma']) and (max(smas)-min(smas))/min(smas) <= 0.05:
                     match = True
-
             elif selected == "Bear Coil":
                 smas = [c['8sma'], c['20sma'], c['200sma']]
                 if (c['close'] < c['8sma'] < c['20sma'] < c['200sma']) and (max(smas)-min(smas))/min(smas) <= 0.05:
