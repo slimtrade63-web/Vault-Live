@@ -21,16 +21,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- RESTORED: Your Original Universe Function ---
+# --- RESTORED: Universe Function with Safety Check ---
 @st.cache_data(ttl=86400)
 def get_universe():
     data = PyTickerSymbols()
-    sp = [s['symbol'] for s in data.get_sp_500_nyc_yahoo_tickers()]
-    nas = [s['symbol'] for s in data.get_nasdaq_100_nyc_yahoo_tickers()]
+    # Added "if 'symbol' in s" to prevent the TypeError you're seeing
+    sp = [s['symbol'] for s in data.get_sp_500_nyc_yahoo_tickers() if s is not None and 'symbol' in s]
+    nas = [s['symbol'] for s in data.get_nasdaq_100_nyc_yahoo_tickers() if s is not None and 'symbol' in s]
     return sorted(list(set(sp + nas)))
 
-st.title("🛡️ Institutional Vault v78.7")
-st.caption("STABLE RESTORATION")
+st.title("🛡️ Institutional Vault v78.8")
+st.caption("STABLE RESTORATION | DATA-SAFETY PATCH")
 st.divider()
 
 # --- Auth ---
@@ -48,7 +49,7 @@ for i, s in enumerate(strategies):
     with cols[i % 4]:
         if st.button(s): selected = s
 
-# --- Scanning Engine (Restored to Original Working Logic) ---
+# --- Scanning Engine ---
 if selected:
     st.divider()
     universe = get_universe()
@@ -64,7 +65,6 @@ if selected:
         status.info(f"🔍 Analyzing {symbol}...")
         
         try:
-            # SIMPLE SINGLE-REQUEST LOGIC
             req = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 timeframe=TimeFrame.Day,
