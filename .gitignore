@@ -27,3 +27,4 @@ Market Scan/
 .idea/
 dist/
 build/
+!backend/requirements.txt
