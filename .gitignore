@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Anaconda
+Anaconda*/
+*.exe
+*.ipynb
+
+# Old files
+Code Dialogues and reports/
+Reports/
+HMM Sector Regime/
+Market Scan/
+*.py
+!backend/
+!frontend/
+
+# Misc
+*.txt
+*.docx
+*.lnk
+.vscode/
+.idea/
+*.exe
+*.pkl
+dist/
+build/
