@@ -1,5 +1,5 @@
 // --- Configuration ---
-const API_BASE = "http://vault-live.onrender.com/scan";
+ const API= "http://vault-live.onrender.com/scan";
 
 // --- Strategy List ---
 const strategies = [
