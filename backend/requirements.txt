@@ -4,3 +4,6 @@ alpaca-py
 pytickersymbols
 pandas
 pytz
+hmmlearn
+scikit-learn
+numpy
