@@ -244,5 +244,5 @@ scores.append({
 scores.sort(key=lambda x: x["composite"], reverse=True)
 return scores
 
-    scores.sort(key=lambda x: x["composite"], reverse=True)
-    return scores
+scores.sort(key=lambda x: x["composite"], reverse=True)
+return scores
