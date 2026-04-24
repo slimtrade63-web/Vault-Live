@@ -143,12 +143,12 @@ async function loadSectors() {
     chart.innerHTML = "";
 
     // Find max absolute composite for scaling bars
-    const maxVal = Math.max(...sectors.map(s => Math.abs(s.composite)), 1);
+    const maxVal = Math.max(...sectors.map(s => Math.abs(s.ret_3m)), 1);
 
     sectors.forEach(s => {
       const isRef     = s.vs_spy === "reference";
       const barClass  = isRef ? "bar-reference" : s.vs_spy === "leading" ? "bar-leading" : s.vs_spy === "lagging" ? "bar-lagging" : "bar-inline";
-      const barWidth  = isRef ? 50 : Math.min(Math.abs(s.composite) / maxVal * 100, 100);
+      const barWidth = Math.min(Math.abs(s.ret_3m) / maxVal * 100, 100);
       const sign      = s.rel_perf >= 0 ? "+" : "";
 
       chart.innerHTML += `

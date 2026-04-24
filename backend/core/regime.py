@@ -215,5 +215,5 @@ def compute_sector_strength(api_key, secret_key):
         "vs_spy":    "reference",
     })
 
-    scores.sort(key=lambda x: x["composite"], reverse=True)
+    scores.sort(key=lambda x: x["ret_3m"], reverse=True)
     return scores
