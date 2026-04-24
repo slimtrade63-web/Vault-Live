@@ -1,7 +1,6 @@
 // --- Configuration ---
-const API_BASE = "https://vault-live.onrender.com/scan";
-const API_ROOT = "https://vault-live.onrender.com";
-
+const API_BASE = "https://vault-live-backend.onrender.com/scan";
+const API_ROOT = "https://vault-live-backend.onrender.com";
 // --- State ---
 let lastScanData = null;
 let lastScanName = null;
