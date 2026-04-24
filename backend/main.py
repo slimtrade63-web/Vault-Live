@@ -1,3 +1,4 @@
+from core.regime import compute_regime, compute_sector_strength
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.universe import get_full_universe
@@ -67,3 +68,11 @@ def run_long_term_momentum():
     universe = get_full_universe()
     results = long_term_momentum.scan(API_KEY, SECRET_KEY, universe)
     return {"strategy": "Long Term Momentum", "results": results}
+
+@app.get("/regime")
+def get_regime():
+    return compute_regime(API_KEY, SECRET_KEY)
+
+@app.get("/sectors")
+def get_sectors():
+    return compute_sector_strength(API_KEY, SECRET_KEY)
