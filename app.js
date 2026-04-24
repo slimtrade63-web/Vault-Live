@@ -155,7 +155,7 @@ async function loadSectors() {
         <div class="sector-row">
           <div class="sector-label">
             <span>${s.name}</span>
-            <span>${isRef ? "REF" : sign + s.rel_perf + "%"}</span>
+            <span>${isRef ? sign + s.ret_3m + "%" : sign + s.rel_perf + "%"}</span>
           </div>
           <div class="sector-bar-bg">
             <div class="sector-bar-fill ${barClass}" style="width:${barWidth}%"></div>

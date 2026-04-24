@@ -205,17 +205,44 @@ def compute_sector_strength(api_key, secret_key):
             "vs_spy":     "leading" if rel_perf > 1 else ("lagging" if rel_perf < -1 else "inline"),
         })
 
-    # Add SPY as reference
-    scores.append({
-        "ticker":    "SPY",
-        "name":      "S&P 500",
-        "ret_3m":    round(spy_return_3m, 2),
-        "rel_perf":  0.0,
-        "ma_score":  0,
-        "vol_score": 0,
-        "composite": 0.0,
-        "vs_spy":    "reference",
-    })
+   # Add SPY as reference with real composite score
+spy_df2 = bars[bars['symbol'] == "SPY"][['timestamp', 'close', 'volume']].copy()
+spy_df2 = spy_df2.sort_values('timestamp').set_index('timestamp')
+spy_close = spy_df2['close']
+spy_volume = spy_df2['volume']
+
+sma8_spy   = spy_close.rolling(8).mean().iloc[-1]
+sma20_spy  = spy_close.rolling(20).mean().iloc[-1]
+sma200_spy = spy_close.rolling(200).mean().iloc[-1] if len(spy_close) >= 200 else None
+curr_spy   = spy_close.iloc[-1]
+
+ma_score_spy = 0
+if curr_spy > sma8_spy:   ma_score_spy += 33
+if curr_spy > sma20_spy:  ma_score_spy += 33
+if sma200_spy and curr_spy > sma200_spy: ma_score_spy += 34
+
+recent_spy = spy_df2.tail(20).copy()
+recent_spy['up'] = recent_spy['close'].diff() > 0
+up_vol_spy   = recent_spy[recent_spy['up']]['volume'].mean()
+down_vol_spy = recent_spy[~recent_spy['up']]['volume'].mean()
+vol_score_spy = 100 if up_vol_spy > down_vol_spy else 0
+
+spy_ret_3m = (curr_spy - spy_close.iloc[-63]) / spy_close.iloc[-63] * 100
+spy_composite = (0 * 0.40) + (ma_score_spy * 0.40) + (vol_score_spy * 0.20)
+
+scores.append({
+    "ticker":    "SPY",
+    "name":      "S&P 500",
+    "ret_3m":    round(spy_ret_3m, 2),
+    "rel_perf":  0.0,
+    "ma_score":  round(ma_score_spy, 1),
+    "vol_score": round(vol_score_spy, 1),
+    "composite": round(spy_composite, 2),
+    "vs_spy":    "reference",
+})
+
+scores.sort(key=lambda x: x["composite"], reverse=True)
+return scores
 
     scores.sort(key=lambda x: x["composite"], reverse=True)
     return scores
